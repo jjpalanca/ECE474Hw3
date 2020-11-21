@@ -5,12 +5,13 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
-
+#include <tuple>   
 //#include <bits/stdc++.h>
 #include <sstream>
 
-// ECE474 Homework 2
-// Due November 8, 2020
+// ECE474 Homework 3
+// Due December 6, 2020 - Extra Credit Deadline
+// Due December 9, 2020 - Absolute Deadline
 
 using namespace std;
 enum Operation { REG = 'R', ADD = '+', SUB = '-', MUL = '*', GT = '>', LT = '<', EQ = '=', SHR = 'r', SHL = 'l' };
@@ -23,10 +24,11 @@ vector<string> fileVariables;
 struct node {
 	string resource; //Operation which needs to be done
 	string output; //Variable being outputed by node
-	vector<string> inputs; //Inputs required by node to work
+	vector<string> inputs; //Inputs required by node to start
 	vector<node *> predecessors; //Nodes generating the inputs
 	vector<node *> succesors; //Nodes waiting for the output
 	int state = -1; //State(clock cycle) where it starts
+	bool done = false;//Node is completed - needed for LIST_R
 };
 unordered_map<int, node> nodes;
 
@@ -39,6 +41,8 @@ bool isItSigned(string variable);
 void createNode(vector<string> expression);
 void connectNodes();
 void setALAPTimes(int latency);
+void setTimes(node *theNode, int latency);
+void doLISTR(int latency);
 
 
 int ModuleIndex = 0; //Global Variable for use in the function convertExpression
@@ -96,7 +100,7 @@ string convertExpresion(vector<string> expression) {
 	string bitWidth = "";
 
 	vector<string> vars;
-	for (int i = 0; i < expression.size(); i += 2) {
+	for (unsigned int i = 0; i < expression.size(); i += 2) {
 		//cout << "expression" << expression[i] << endl;
 		if (expression[i] != "")
 			vars.push_back(expression[i]);
@@ -259,7 +263,7 @@ Int128 -> 128; H3LL0 -> 30)
 */
 string getNumber(string x) {
 	string result = "";
-	for (int i = 0; i < x.size(); i++)
+	for (unsigned int i = 0; i < x.size(); i++)
 		if (isdigit(x[i]))
 			result += x[i];
 	return result;
@@ -291,7 +295,7 @@ string convertDeclaration(vector<string> input) {
 		declaration += temp;
 	}
 
-	for (int i = 2; i < input.size(); i++) {
+	for (unsigned int i = 2; i < input.size(); i++) {
 		declaration += input.at(i);
 		if (i != input.size() - 1) {
 			declaration += " ";
@@ -336,7 +340,7 @@ int readFile(string input_filename, int latency = 4, string output_filename = "v
 		} while ((pos) != string::npos);
 		if (lineSplit[0] == "input" || lineSplit[0] == "output" || lineSplit[0] == "variable" || lineSplit[0] == "register") {
 			if (lineSplit[0] == "input") {
-				for (int i = 2; i < lineSplit.size(); i++) {
+				for (unsigned int i = 2; i < lineSplit.size(); i++) {
 					vector<string>temp;
 					char first = lineSplit[1][0];
 					string sign = "s";
@@ -356,7 +360,7 @@ int readFile(string input_filename, int latency = 4, string output_filename = "v
 				}
 			}
 			else if (lineSplit[0] == "output") {
-				for (int i = 2; i < lineSplit.size(); i++) {
+				for (unsigned int i = 2; i < lineSplit.size(); i++) {
 					vector<string>temp;
 					char first = lineSplit[1][0];
 					string sign = "s";
@@ -375,7 +379,7 @@ int readFile(string input_filename, int latency = 4, string output_filename = "v
 				}
 			}
 			else if (lineSplit[0] == "variable") { //variable replaced wires?
-				for (int i = 2; i < lineSplit.size(); i++) {
+				for (unsigned int i = 2; i < lineSplit.size(); i++) {
 					vector<string>temp;
 					char first = lineSplit[1][0];
 					string sign = "s";
@@ -395,7 +399,7 @@ int readFile(string input_filename, int latency = 4, string output_filename = "v
 				}
 			}
 			else if (lineSplit[0] == "register") {
-				for (int i = 2; i < lineSplit.size(); i++) {
+				for (unsigned int i = 2; i < lineSplit.size(); i++) {
 					vector<string>temp;
 					char first = lineSplit[1][0];
 					string sign = "s";
@@ -426,7 +430,8 @@ int readFile(string input_filename, int latency = 4, string output_filename = "v
 		tempString = "";
 	}
 	connectNodes();
-
+	setALAPTimes(latency);
+	doLISTR(latency);
 	////////////////////////////////Do List_R stuff here////////////////////////////////
 	////////////////////////////////Do List_R stuff here////////////////////////////////
 	//writeVerilogFile(output_filename, results);
@@ -443,7 +448,7 @@ void writeVerilogFile(string verilogFile, vector<string> results) {
 	file << "`timescale 1ns / 1ps" << endl;
 	file << "module " << verilogFile << "(CLK, RST," << getVariableNames() << ");" << endl;
 	file << "\tinput CLK, RST;" << endl;
-	for (int i = 0; i < results.size(); i++) {
+	for (unsigned int i = 0; i < results.size(); i++) {
 		file << results[i];
 	}
 	file << "endmodule";
@@ -480,7 +485,7 @@ void createNode(vector<string> expression) {
 	node newNode;
 	vector<string> vars;
 	ModuleIndex += 1;
-	for (int i = 0; i < expression.size(); i += 2) {
+	for (unsigned int i = 0; i < expression.size(); i += 2) {
 		if (expression[i] != "")
 			vars.push_back(expression[i]);
 	}
@@ -494,6 +499,8 @@ void createNode(vector<string> expression) {
 	if (expression.size() != 3) {
 		string op = expression[3];
 		newNode.resource = op;
+		if((op == ">") || (op == "<") || (op == "=="))
+			newNode.resource = "COMP";
 		newNode.inputs.push_back(expression[4]);
 		if (isValidOperator(op)) {
 			//MUX2x1; Multiplex from 2 to 1. Special Case
@@ -522,7 +529,7 @@ Connect every single node by populating the succesors and predeccesors vectors
 of the nodes. 
 */
 void connectNodes() {
-	int i, j;
+	unsigned int i, j;
 	for (i = 1; i <= nodes.size(); ++i) {
 		for (j = 1; j <= nodes.size(); ++j) {
 			if (i == j)
@@ -542,20 +549,66 @@ void connectNodes() {
 Assign a value for the state property for each node corresponding to ALAP time. 
 The nodes should have predeccesors and succesors populated in order for this 
 function to work. PROBABLY A RECUSIVE SOLUTION WOULD BE BETTER
+I am defining branches as the group of nodes which are not connected to other
+group of nodes. To identify branches, I will check the nodes at the end of the
+DAG(nodes with no succesors).
 */
 void setALAPTimes(int latency) {
-	node* currNode = NULL;
-	int currlatency;
-	for (int i = nodes.size() - 1; i > 0; i--) {
-		if (nodes[i].succesors.size() == 0)
-			nodes[i].state = latency;
-		else {
-			currNode = &nodes[i];
-			//while (currNode != NULL) {
-			//	currNode
-			//}
-		}
+	for (unsigned int i = 1; i <= nodes.size(); ++i) {
+		if (nodes[i].succesors.size() == 0) 
+			setTimes(&nodes[i], latency);
 	}
+	return;
+}
+
+/**
+Recursive helper? function to set the time property from the nodes sent by
+setALAPTimes function.
+*/
+void setTimes(node *theNode, int latency) {
+	if ((*theNode).resource == "*")//multiplier take two cycles
+		--latency; 
+	(*theNode).state = latency;
+	if (latency <= 0)
+		cout << "Error: Latency is not big enough to fit all nodes.\n\n\n";
+	for (int i = (*theNode).predecessors.size() - 1; i >= 0; i--)
+			setTimes((*theNode).predecessors[i], --latency);
+	return;
+}
+
+
+/**
+Change all state values corresponding to LIST_R scheaduling.
+Pseudo code can be found on lecture 17_HLS_Scheduling_2.pdf
+*/
+void doLISTR(int latency){
+	int ADDs, SUBs, COMPs, MULs, MUX2x1s, SHR, SHL;
+	//operations maps to vector of boolean which stands for the resource being used
+	unordered_map<string, vector<int>> resources;
+	int currtime, slack;
+	node* currNode = &nodes[1]; //CAREFUL.You can create a new node if the index is wrong
+	resources["+"].push_back({ 0 });
+	resources["-"].push_back({ 0 });
+	resources["*"].push_back({ 0 });
+	resources["?"].push_back({ 0 });
+	resources["REG"].push_back({ 0 });
+	resources["COMP"].push_back({ 0 });
+	currtime = 1;
+	do {
+		slack = currNode->state - currtime;
+		for (int i = 0; i < resources[currNode->resource].size(); ++i) {
+			if (resources[currNode->resource][i] == 0) {
+				resources[currNode->resource][i] = true;
+
+			}
+		}
+		resources[currNode->resource][0] = true;
+		if (slack == 0) {
+			cout << "Deradth";
+		}
+		currNode = currNode->succesors[0];
+	} while ((*currNode).succesors.size() != 0);
+	return;
 }
 
 int main(int argc, const char * argv[]) {
