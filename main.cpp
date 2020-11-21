@@ -583,7 +583,7 @@ Pseudo code can be found on lecture 17_HLS_Scheduling_2.pdf
 */
 void doLISTR(int latency){
 	int ADDs, SUBs, COMPs, MULs, MUX2x1s, SHR, SHL;
-	//operations maps to vector of boolean which stands for the resource being used
+	//operations maps to vector which helps us keep track if they are busy or not
 	unordered_map<string, vector<int>> resources;
 	int currtime, slack;
 	node* currNode = &nodes[1]; //CAREFUL.You can create a new node if the index is wrong
