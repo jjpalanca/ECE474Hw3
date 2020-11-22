@@ -28,7 +28,8 @@ struct node {
 	vector<node *> predecessors; //Nodes generating the inputs
 	vector<node *> succesors; //Nodes waiting for the output
 	int state = -1; //State(clock cycle) where it starts
-	bool done = false;//Node is completed - needed for LIST_R
+	bool scheadule = false;//Node is completed - needed for LIST_R
+	bool done = false;
 };
 unordered_map<int, node> nodes;
 
@@ -43,6 +44,7 @@ void connectNodes();
 void setALAPTimes(int latency);
 void setTimes(node *theNode, int latency);
 void doLISTR(int latency);
+bool allNodesDone();
 
 
 int ModuleIndex = 0; //Global Variable for use in the function convertExpression
@@ -484,7 +486,6 @@ needs to be splitted into two separed nodes each, making things more complicated
 void createNode(vector<string> expression) {
 	node newNode;
 	vector<string> vars;
-	ModuleIndex += 1;
 	for (unsigned int i = 0; i < expression.size(); i += 2) {
 		if (expression[i] != "")
 			vars.push_back(expression[i]);
@@ -513,12 +514,14 @@ void createNode(vector<string> expression) {
 			exit(0);
 		}
 		nodes[ModuleIndex] = newNode;
+		ModuleIndex += 1;
 		return;
 	}
 	//REG
 	else {
 		newNode.resource = "REG";
 		nodes[ModuleIndex] = newNode;
+		ModuleIndex += 1;
 		return;
 	}
 	cout << "UNEXPECTED EXPRESSION or ERROR\n";
@@ -530,8 +533,8 @@ of the nodes.
 */
 void connectNodes() {
 	unsigned int i, j;
-	for (i = 1; i <= nodes.size(); ++i) {
-		for (j = 1; j <= nodes.size(); ++j) {
+	for (i = 0; i < nodes.size(); ++i) {
+		for (j = 0; j < nodes.size(); ++j) {
 			if (i == j)
 				continue;
 			for (string input : nodes[i].inputs) {
@@ -554,7 +557,7 @@ group of nodes. To identify branches, I will check the nodes at the end of the
 DAG(nodes with no succesors).
 */
 void setALAPTimes(int latency) {
-	for (unsigned int i = 1; i <= nodes.size(); ++i) {
+	for (unsigned int i = 0; i < nodes.size(); ++i) {
 		if (nodes[i].succesors.size() == 0) 
 			setTimes(&nodes[i], latency);
 	}
@@ -569,8 +572,9 @@ void setTimes(node *theNode, int latency) {
 	if ((*theNode).resource == "*")//multiplier take two cycles
 		--latency; 
 	(*theNode).state = latency;
-	if (latency <= 0)
+	if (latency <= 0) {
 		cout << "Error: Latency is not big enough to fit all nodes.\n\n\n";
+	}
 	for (int i = (*theNode).predecessors.size() - 1; i >= 0; i--)
 			setTimes((*theNode).predecessors[i], --latency);
 	return;
@@ -582,37 +586,84 @@ Change all state values corresponding to LIST_R scheaduling.
 Pseudo code can be found on lecture 17_HLS_Scheduling_2.pdf
 */
 void doLISTR(int latency){
-	int ADDs, SUBs, COMPs, MULs, MUX2x1s, SHR, SHL;
-	//operations maps to vector which helps us keep track if they are busy or not
+	//operations maps to vector of boolean which stands for the resource being used
 	unordered_map<string, vector<int>> resources;
+	vector<tuple<int*, node*>> busyResources;
+	vector<node *> nodesAtState;
 	int currtime, slack;
-	node* currNode = &nodes[1]; //CAREFUL.You can create a new node if the index is wrong
-	resources["+"].push_back({ 0 });
-	resources["-"].push_back({ 0 });
-	resources["*"].push_back({ 0 });
-	resources["?"].push_back({ 0 });
-	resources["REG"].push_back({ 0 });
-	resources["COMP"].push_back({ 0 });
+	bool notFailed;
+	vector<string> ops{ "+", "-", "*", ">>", "<<", "?", "COMP", "REG"};
+	node* currNode; //CAREFUL. You can create a new node if the index is wrong
+	for(string op: ops)
+		resources[op].push_back({0});
 	currtime = 1;
 	do {
-		slack = currNode->state - currtime;
-		for (int i = 0; i < resources[currNode->resource].size(); ++i) {
-			if (resources[currNode->resource][i] == 0) {
-				resources[currNode->resource][i] = true;
-
+		CHECKVECTORAGAIN:
+		for (unsigned int i = 0; i < busyResources.size(); ++i) { //Check if any resource is busy
+			--(*(get<0>(busyResources[i])));
+			if (*(get<0>(busyResources[i])) == 0) {
+				get<1>(busyResources[i])->done = true;
+				busyResources.erase(busyResources.begin() + i, busyResources.begin() + i + 1);
+				goto CHECKVECTORAGAIN;//Vectors are hard to deal with, so redo entire for loop
 			}
 		}
-		resources[currNode->resource][0] = true;
-		if (slack == 0) {
-			cout << "Deradth";
+
+		for (unsigned int i = 0; i < nodes.size(); ++i) { //Get all nodes at time L
+			notFailed = true;
+			for (node* theNode : nodes[i].predecessors) {
+				if (!theNode->done) {
+					notFailed = false;
+					break;
+				}
+			}
+			if (notFailed && !nodes[i].scheadule)
+				nodesAtState.push_back(&nodes[i]);
 		}
-		currNode = currNode->succesors[0];
-	} while ((*currNode).succesors.size() != 0);
+
+		for (unsigned int i = 0; i < nodesAtState.size(); ++i) {
+			currNode = nodesAtState[i];
+			slack = currNode->state - currtime;
+			if (slack < 0) {
+				cout << "ERROR: LATENCY IS NOT ENOUGHT TO FIT ALL NODES";
+				exit(0);
+			}
+			for (unsigned int i = 0; i < resources[currNode->resource].size(); ++i) {
+				if ((resources[currNode->resource][i] == 0) && (!currNode->scheadule)) {
+					currNode->scheadule = true;
+					currNode->state = currtime;
+					resources[currNode->resource][i] = slack;
+					if (currNode->resource == "*")
+						resources[currNode->resource][i] = 2;
+					else
+						resources[currNode->resource][i] = 1;
+					busyResources.push_back({&resources[currNode->resource][i], currNode});
+					break;
+				}
+			}
+			if ((slack == 0) && (!currNode->scheadule)) {//if 0 slack and all resources are busy
+				resources[currNode->resource].push_back(slack); //Create new resource
+				currNode->scheadule = true;
+			}
+		}
+		currtime += 1;
+		nodesAtState.clear();
+	} while (!allNodesDone()); //keep working until all nodes scheaduled
 	return;
+}
+
+bool allNodesDone() {
+	for (unsigned int i = 0; i < nodes.size(); ++i) {
+		if(!nodes[i].done)
+			return false;
+	}
+	return true;
 }
 
 int main(int argc, const char * argv[]) {
 	ifstream myfile;
+	/*tuple<int, int> x;
+	x = { 1,5 };
+	int y = get<0>(x);*/
 	myfile.open(argv[1]);
 	if (myfile) {
 		if (argc == 4)
