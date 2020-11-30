@@ -307,9 +307,21 @@ string convertDeclaration(vector<string> input) {
 	return declaration;
 }
 
+//prints the state of the nodes
+void printNodes(){
+	for (const auto & [key, value] : nodes) {
+    	cout << "Node" << key << " " << "Inputs:";//" : " << value.inputs << endl;
+		for(int i = 0; i < value.inputs.size(); i++){
+			cout << value.inputs.at(i) << " ";
+		}
+		cout << "Time " << value.state << endl;
+	}
+	return;
+}
+
 // inputs["a":<sign, bits>, "b":<sign, bit>]
 
-int readFile(string input_filename, int latency = 4, string output_filename = "verilogFile") {
+int readFile(string input_filename, int latency = 8, string output_filename = "verilogFile") {
 	string tempString = "";
 	string line;
 	ifstream myfile;
@@ -434,6 +446,7 @@ int readFile(string input_filename, int latency = 4, string output_filename = "v
 	connectNodes();
 	setALAPTimes(latency);
 	doLISTR(latency);
+	printNodes();
 	////////////////////////////////Do List_R stuff here////////////////////////////////
 	////////////////////////////////Do List_R stuff here////////////////////////////////
 	//writeVerilogFile(output_filename, results);
