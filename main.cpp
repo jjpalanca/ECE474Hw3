@@ -1,4 +1,3 @@
-
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -52,7 +51,7 @@ int ModuleIndex = 0; //Global Variable for use in the function convertExpression
 
 bool isValidOperator(string op) {
 	bool isValid = false;
-	vector<string> ops{ "+", "-", "*", ">>", "<<", "?", ">", "<", "=="};
+	vector<string> ops{ "+", "-", "*", ">>", "<<", "?", ">", "<", "==", "%", "/"};
 	for (string x : ops) {
 		if (op.compare(x) == 0) {
 			isValid = true;
@@ -307,21 +306,21 @@ string convertDeclaration(vector<string> input) {
 	return declaration;
 }
 
-//prints the state of the nodes
-void printNodes(){
-	for (const auto & [key, value] : nodes) {
-    	cout << "Node" << key << " " << "Inputs:";//" : " << value.inputs << endl;
-		for(int i = 0; i < value.inputs.size(); i++){
-			cout << value.inputs.at(i) << " ";
-		}
-		cout << "Time " << value.state << endl;
-	}
-	return;
-}
+////prints the state of the nodes
+//void printNodes() {
+//	for (const auto &[key, value] : nodes) {
+//		cout << "Node" << key << " " << "Inputs:";//" : " << value.inputs << endl;
+//		for (int i = 0; i < value.inputs.size(); i++) {
+//			cout << value.inputs.at(i) << " ";
+//		}
+//		cout << "Time " << value.state << endl;
+//	}
+//	return;
+//}
 
 // inputs["a":<sign, bits>, "b":<sign, bit>]
 
-int readFile(string input_filename, int latency = 8, string output_filename = "verilogFile") {
+int readFile(string input_filename, int latency = 5, string output_filename = "verilogFile") {
 	string tempString = "";
 	string line;
 	ifstream myfile;
@@ -446,7 +445,7 @@ int readFile(string input_filename, int latency = 8, string output_filename = "v
 	connectNodes();
 	setALAPTimes(latency);
 	doLISTR(latency);
-	printNodes();
+	//printNodes();
 	////////////////////////////////Do List_R stuff here////////////////////////////////
 	////////////////////////////////Do List_R stuff here////////////////////////////////
 	//writeVerilogFile(output_filename, results);
@@ -504,26 +503,33 @@ void createNode(vector<string> expression) {
 			vars.push_back(expression[i]);
 	}
 
-	if (!validVariables(vars)) 
+	if (!validVariables(vars))
 		exit(0);
-	
+
 	newNode.output = expression[0];
 	newNode.inputs.push_back(expression[2]);
 	// if not register expression 
 	if (expression.size() != 3) {
 		string op = expression[3];
-		newNode.resource = op;
-		if((op == ">") || (op == "<") || (op == "=="))
-			newNode.resource = "COMP";
+		if ((op == ">") || (op == "<") || (op == "=="))
+			newNode.resource = "LOGIC";
 		newNode.inputs.push_back(expression[4]);
 		if (isValidOperator(op)) {
+			if ((op == "+") || (op == "-"))
+				newNode.resource = "ADD/SUB";
+			else if ((op == "/") || (op == "%"))
+				newNode.resource = "DIV/MOD";
+			else if ((op == "*"))
+				newNode.resource = "MULT";
 			//MUX2x1; Multiplex from 2 to 1. Special Case
-			if (op.compare("?") == 0) {
-				newNode.inputs.push_back(expression[6]);
-			}
+			else if ((op == ">>") || (op == "<<") || (op == "?")) 
+				newNode.resource = "LOGIC";
+			if (op.compare("?") == 0) 
+				newNode.inputs.push_back(expression[6]); //third input
 		}
 		else {
 			cout << "Error: Invalid operator" << endl;
+			cin.get();
 			exit(0);
 		}
 		nodes[ModuleIndex] = newNode;
@@ -542,7 +548,7 @@ void createNode(vector<string> expression) {
 
 /**
 Connect every single node by populating the succesors and predeccesors vectors
-of the nodes. 
+of the nodes.
 */
 void connectNodes() {
 	unsigned int i, j;
@@ -562,8 +568,8 @@ void connectNodes() {
 }
 
 /**
-Assign a value for the state property for each node corresponding to ALAP time. 
-The nodes should have predeccesors and succesors populated in order for this 
+Assign a value for the state property for each node corresponding to ALAP time.
+The nodes should have predeccesors and succesors populated in order for this
 function to work. PROBABLY A RECUSIVE SOLUTION WOULD BE BETTER
 I am defining branches as the group of nodes which are not connected to other
 group of nodes. To identify branches, I will check the nodes at the end of the
@@ -571,7 +577,7 @@ DAG(nodes with no succesors).
 */
 void setALAPTimes(int latency) {
 	for (unsigned int i = 0; i < nodes.size(); ++i) {
-		if (nodes[i].succesors.size() == 0) 
+		if (nodes[i].succesors.size() == 0)
 			setTimes(&nodes[i], latency);
 	}
 	return;
@@ -582,14 +588,20 @@ Recursive helper? function to set the time property from the nodes sent by
 setALAPTimes function.
 */
 void setTimes(node *theNode, int latency) {
-	if ((*theNode).resource == "*")//multiplier take two cycles
-		--latency; 
-	(*theNode).state = latency;
 	if (latency <= 0) {
 		cout << "Error: Latency is not big enough to fit all nodes.\n\n\n";
+		cin.get();
+		exit(1);
 	}
-	for (int i = (*theNode).predecessors.size() - 1; i >= 0; i--)
-			setTimes((*theNode).predecessors[i], --latency);
+	if ((*theNode).resource == "MULT")//multiplier take two cycles
+		--latency;
+	if ((*theNode).resource == "DIV/MOD")//multiplier take two cycles
+		latency-=2;
+	if((*theNode).state > latency || (*theNode).state == -1)
+		(*theNode).state = latency;
+	for (int i = (*theNode).predecessors.size() - 1; i >= 0; i--) 
+		setTimes((*theNode).predecessors[i], latency - 1);
+	
 	return;
 }
 
@@ -598,20 +610,22 @@ void setTimes(node *theNode, int latency) {
 Change all state values corresponding to LIST_R scheaduling.
 Pseudo code can be found on lecture 17_HLS_Scheduling_2.pdf
 */
-void doLISTR(int latency){
+void doLISTR(int latency) {
 	//operations maps to vector of boolean which stands for the resource being used
 	unordered_map<string, vector<int>> resources;
 	vector<tuple<int*, node*>> busyResources;
 	vector<node *> nodesAtState;
 	int currtime, slack;
 	bool notFailed;
-	vector<string> ops{ "+", "-", "*", ">>", "<<", "?", "COMP", "REG"};
+	vector<string> ops{ "ADD/SUB", "MULT", "LOGIC", "DIV/MOD", "REG"};
 	node* currNode; //CAREFUL. You can create a new node if the index is wrong
-	for(string op: ops)
-		resources[op].push_back({0});
+	for (string op : ops) {
+		resources[op].reserve(1000);
+		resources[op].push_back({ 0 });
+	}
 	currtime = 1;
 	do {
-		CHECKVECTORAGAIN:
+	CHECKVECTORAGAIN:
 		for (unsigned int i = 0; i < busyResources.size(); ++i) { //Check if any resource is busy
 			--(*(get<0>(busyResources[i])));
 			if (*(get<0>(busyResources[i])) == 0) {
@@ -638,23 +652,34 @@ void doLISTR(int latency){
 			slack = currNode->state - currtime;
 			if (slack < 0) {
 				cout << "ERROR: LATENCY IS NOT ENOUGHT TO FIT ALL NODES";
+				cin.get();
 				exit(0);
 			}
-			for (unsigned int i = 0; i < resources[currNode->resource].size(); ++i) {
-				if ((resources[currNode->resource][i] == 0) && (!currNode->scheadule)) {
+			for (unsigned int j = 0; j < resources[currNode->resource].size(); ++j) {
+				if ((resources[currNode->resource][j] == 0) && (!currNode->scheadule)) {
 					currNode->scheadule = true;
 					currNode->state = currtime;
-					resources[currNode->resource][i] = slack;
-					if (currNode->resource == "*")
-						resources[currNode->resource][i] = 2;
+					resources[currNode->resource][j] = slack;
+					if (currNode->resource == "DIV/MOD")
+						resources[currNode->resource][j] = 3;
+					else if (currNode->resource == "MULT")
+						resources[currNode->resource][j] = 2;
 					else
-						resources[currNode->resource][i] = 1;
-					busyResources.push_back({&resources[currNode->resource][i], currNode});
+						resources[currNode->resource][j] = 1;
+					busyResources.push_back({ &resources[currNode->resource][j], currNode });
 					break;
 				}
 			}
 			if ((slack == 0) && (!currNode->scheadule)) {//if 0 slack and all resources are busy
-				resources[currNode->resource].push_back(slack); //Create new resource
+				resources[currNode->resource].push_back(0); //Create new resource
+				int index = resources[currNode->resource].size() - 1;
+				if (currNode->resource == "DIV/MOD")
+					resources[currNode->resource][index] = 3;
+				else if (currNode->resource == "MULT")
+					resources[currNode->resource][index] = 2;
+				else
+					resources[currNode->resource][index] = 1;
+				busyResources.push_back({ &resources[currNode->resource][index], currNode });
 				currNode->scheadule = true;
 			}
 		}
@@ -666,7 +691,7 @@ void doLISTR(int latency){
 
 bool allNodesDone() {
 	for (unsigned int i = 0; i < nodes.size(); ++i) {
-		if(!nodes[i].done)
+		if (!nodes[i].done)
 			return false;
 	}
 	return true;
