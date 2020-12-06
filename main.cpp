@@ -375,7 +375,7 @@ string convertDeclaration(vector<string> input)
 }
 
 ////prints the state of the nodes
-void printNodes()
+/* void printNodes()
 {
 	for (const auto &[key, value] : nodes)
 	{
@@ -394,7 +394,7 @@ void printNodes()
 	}
 	return;
 }
-
+ */
 // inputs["a":<sign, bits>, "b":<sign, bit>]
 
 int readFile(string input_filename, int latency, string output_filename = "verilogFile")
