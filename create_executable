@@ -1,6 +1,6 @@
 mkdir build
 cd build/
 pwd
-cmake3 ..
+cmake ..
 make
 echo "dbgen can be found on build folder"
