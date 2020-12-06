@@ -408,7 +408,7 @@ int readFile(string input_filename, int latency, string output_filename = "veril
 	//while(getline(myfile, line)){
 	while (getline(myfile, line, '\n'))
 	{
-		cout << "line:" << line << "\n";
+		//cout << "line:" << line << "\n";
 		vector<string> lineSplit;
 		string actuaLine = line;
 		string token;
@@ -920,7 +920,9 @@ void doLISTR(int latency)
 						resources[currNode->resource][j] = 2;
 					else
 						resources[currNode->resource][j] = 1;
-					busyResources.push_back({&resources[currNode->resource][j], currNode});
+					//busyResources.push_back({&resources[currNode->resource][j], currNode});
+					tuple<int *, node *> v{&resources[currNode->resource][j], currNode};
+					busyResources.push_back(v);
 					break;
 				}
 			}
