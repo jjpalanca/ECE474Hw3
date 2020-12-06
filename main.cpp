@@ -48,7 +48,8 @@ string getBitWidth(string variable);
 string getNumber(string variable);
 string getVariableNames();
 string appendToInput(string input, string output);
-void writeVerilogFile(string verilogFile, vector<string> results);
+vector<vector<string>> operations;
+void writeVerilogFile(string verilogFile, vector<vector<string>> results);
 bool isItSigned(string variable);
 void createNode(vector<string> expression);
 void connectNodes();
@@ -399,7 +400,7 @@ int readFile(string input_filename, int latency, string output_filename = "veril
 	string tempString = "";
 	string line;
 	ifstream myfile;
-	vector<string> results;
+	vector<vector<string>> results;
 	myfile.open(input_filename);
 
 	//while(getline(myfile, line)){
@@ -407,7 +408,7 @@ int readFile(string input_filename, int latency, string output_filename = "veril
 	{
 		cout << "line:" << line << "\n";
 		vector<string> lineSplit;
-
+		string actuaLine = line;
 		string token;
 		string delimiter = " ";
 		size_t pos = 0;
@@ -529,13 +530,16 @@ int readFile(string input_filename, int latency, string output_filename = "veril
 				}
 			}
 			tempString += "\t" + convertDeclaration(lineSplit) + "\n";
-			results.push_back(tempString);
+			vector<string> v{tempString};
+			results.push_back(v);
 		}
 		else if (lineSplit[0] != "")
 		{ //Some lines are empty in the netlist
 			createNode(lineSplit);
-			tempString += "\t" + convertExpresion(lineSplit) + "\n";
-			results.push_back(tempString);
+			//tempString += "\t" + convertExpresion(lineSplit) + "\n";
+			tempString += "\t" + actuaLine + ";\n";
+			vector<string> v{tempString, to_string(ModuleIndex - 1)};
+			operations.push_back(v);
 			//results.push_back(tempString);//Need to determine LIST_r
 		}
 		//cout << tempString;
@@ -624,6 +628,13 @@ string getStateCaseCode(int state)
 	{
 		code += "\t\tsig" + to_string(state) + ":\n";
 		code += "\t\tbegin\n";
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			if (nodes[i].state == state)
+			{
+				code += "\t\t\t" + operations[i][0];
+			}
+		}
 	}
 	code += "\t\tend\n";
 	return code;
@@ -642,7 +653,7 @@ string getStatesCode()
 Creates the Verilog file given the results from the convertExpression
 convertDeclaration functions.
 */
-void writeVerilogFile(string verilogFile, vector<string> results)
+void writeVerilogFile(string verilogFile, vector<vector<string>> results)
 {
 	ofstream file;
 	numBits = countBits(stoi(globaLatency) + 1) - 1;
@@ -656,7 +667,8 @@ void writeVerilogFile(string verilogFile, vector<string> results)
 	file << "\treg[" << numBits << ":0] present_state, next_state;" << endl;
 	for (unsigned int i = 0; i < results.size(); i++)
 	{
-		file << results[i];
+		if (results[i].size() == 1)
+			file << results[i][0];
 	}
 	for (unsigned int i = 0; i < (stoi(globaLatency) + 2); i++)
 	{
@@ -668,6 +680,11 @@ void writeVerilogFile(string verilogFile, vector<string> results)
 				 << " = " << numBits + 1 << "'b" << decToBinary(i) << ";" << endl;
 		else
 			file << "\tlocalparam sig" << i << " = " << numBits + 1 << "'b" << decToBinary(i) << ";" << endl;
+	}
+	for (unsigned int i = 0; i < results.size(); i++)
+	{
+		if (results[i].size() != 1)
+			file << results[i][0] << results[i][1] << "\n";
 	}
 	file << getTransitionBlockCode() << endl;
 	file << getOutputBlockCode() << endl;
