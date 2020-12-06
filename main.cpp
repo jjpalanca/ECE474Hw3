@@ -550,7 +550,7 @@ int readFile(string input_filename, int latency, string output_filename = "veril
 	connectNodes();
 	setALAPTimes(latency);
 	doLISTR(latency);
-	printNodes();
+	//printNodes();
 	////////////////////////////////Do List_R stuff here////////////////////////////////
 	////////////////////////////////Do List_R stuff here////////////////////////////////
 	writeVerilogFile(output_filename, results);
@@ -601,16 +601,6 @@ string getEndingStateCode()
 string getStateCaseCode(int state)
 {
 	string code = "";
-	for (const auto &[key, value] : nodes)
-	{
-		cout << "Node" << key << " "
-			 << "Inputs:"; //" : " << value.inputs << endl;
-		for (int i = 0; i < value.inputs.size(); i++)
-		{
-			cout << value.inputs.at(i) << " ";
-		}
-		cout << "Time " << value.state << endl;
-	}
 	if (state == 0)
 	{
 		code += "\t\tWait:\n";
