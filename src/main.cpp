@@ -936,7 +936,9 @@ void doLISTR(int latency)
 					resources[currNode->resource][index] = 2;
 				else
 					resources[currNode->resource][index] = 1;
-				busyResources.push_back({&resources[currNode->resource][index], currNode});
+				tuple<int *, node *> v{&resources[currNode->resource][index], currNode};
+                                busyResources.push_back(v);
+				//busyResources.push_back({&resources[currNode->resource][index], currNode});
 				currNode->scheadule = true;
 			}
 		}
