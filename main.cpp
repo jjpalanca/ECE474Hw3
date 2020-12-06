@@ -339,7 +339,8 @@ string convertDeclaration(vector<string> input)
 	}
 	else if (input.at(0) == "output")
 	{
-		declaration += "output ";
+		//declaration += "output ";
+		declaration += "output reg ";
 	}
 	else if (input.at(0) == "register")
 	{
@@ -347,7 +348,8 @@ string convertDeclaration(vector<string> input)
 	}
 	else
 	{
-		declaration += "wire ";
+		//declaration += "wire ";
+		declaration += "reg ";
 	}
 	if (input.at(1) != "Int1")
 	{
@@ -634,6 +636,13 @@ string getStateCaseCode(int state)
 			{
 				code += "\t\t\t" + operations[i][0];
 			}
+		}
+		if (state == stoi(globaLatency))
+			code += "\t\t\t\tnext_state = Final;\n";
+		else
+		{
+			code += "\t\t\t\tnext_state = sig" + to_string(state + 1);
+			code += ";\n";
 		}
 	}
 	code += "\t\tend\n";
